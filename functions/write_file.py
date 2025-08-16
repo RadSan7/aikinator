@@ -24,8 +24,6 @@ schema_write_file = types.FunctionDeclaration(
 def write_file(working_directory, file_path, content):
     work_dir= os.path.abspath(working_directory)
     target_file = os.path.abspath(os.path.join(work_dir, file_path)) 
-    print(f"Working directory: {work_dir}")
-    print(f"Target file: {target_file}")
 
     if not target_file.startswith(work_dir):
         return f'Error: Cannot read "{file_path}" as it is outside the permitted working directory'

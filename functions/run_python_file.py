@@ -23,7 +23,6 @@ schema_run_python_file = types.FunctionDeclaration(
 
 
 def run_python_file(working_directory, file_path, args=[]):
-    print("")
     work_dir= os.path.abspath(working_directory)
     target_file = os.path.abspath(os.path.join(work_dir, file_path)) 
 
@@ -38,18 +37,13 @@ def run_python_file(working_directory, file_path, args=[]):
     
     try:
         result = subprocess.run(
-            [sys.executable, target_file] + args,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            cwd=work_dir,
-            timeout=30,
-            text=True
-        )
-        result.stdout = "STDOUT: " + result.stdout.strip()
-        result.stderr = "STDERR: " + result.stderr.strip()
-        return result
+        ["python", target_file] + (args or []),
+        cwd=working_directory,
+        capture_output=True,
+        text=True
+    )
+        return {"stdout": result.stdout.strip(), "stderr": result.stderr.strip(), "returncode": result.returncode}
     except subprocess.TimeoutExpired:
         return f'Error: Execution of "{file_path}" timed out after 30 seconds.'
     except Exception as e:
         return f'Error: executing Python file: {e}'
-    print(")")

@@ -9,7 +9,6 @@ from functions.get_file_content import *
 from functions.run_python_file import *
 from functions.write_file import *
 
-
 load_dotenv()
 api_key = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=api_key)
@@ -36,7 +35,6 @@ def call_function(function_call_part, verbose=False):
 
     function_name = function_call_part.name
 
-    print(function_call_part)
     match function_name:
     
         case "get_files_info":
@@ -48,7 +46,6 @@ def call_function(function_call_part, verbose=False):
         case "write_file":
             result = write_file(working_directory, directory, function_args.get("content", ""))
         case _:
-            print("test error")
             return types.Content(
                 role="tool",
                 parts=[
@@ -71,7 +68,7 @@ def call_function(function_call_part, verbose=False):
 
 
 def main():
-        # Allow passing prompt from terminal (e.g., ai "your question")
+    
     args = sys.argv[1:]
     verbose = False
 
@@ -85,7 +82,36 @@ def main():
         verbose = True
         args.remove("--verbose")
 
+
     prompt = " ".join(args)
+
+    if verbose:
+        print(f"User prompt: {prompt}\n")
+
+    messages = [types.Content(role="user", parts=[types.Part(text=prompt)]),]
+
+    iters = 0
+
+    while True:
+        iters += 1
+        if iters > 20:
+            print(f"Maximum iterations 20 reached.")
+            sys.exit(1)
+
+        try:
+            final_response = generate_content(messages, available_functions, verbose)
+            if final_response:
+                print("Final response:")
+                print(final_response)
+                break
+        except Exception as e:
+            print(f"Error in generate_content: {e}")
+ 
+    
+
+
+
+def generate_content(messages, available_functions, verbose):
     system_prompt = """
 You are a helpful AI coding agent.
 When a user asks a question or makes a request, make a function call plan. You can perform the following operations:
@@ -96,19 +122,44 @@ When a user asks a question or makes a request, make a function call plan. You c
 All paths you provide should be relative to the working directory. You do not need to specify the working directory in your function calls as it is automatically injected for security reasons.
 """
 
-    messages = [types.Content(role="user", parts=[types.Part(text=prompt)]),]
-    response = client.models.generate_content(model="gemini-2.0-flash-001", contents=messages, config=types.GenerateContentConfig(tools=[available_functions], system_instruction=system_prompt))
-    function_call_part = None
-    for part in response.candidates[0].content.parts:
-        if part.function_call is not None:
-            function_call_part = part.function_call
-            break
-    
-    function_result = call_function(function_call_part, verbose)
-    if function_result.parts[0].function_response:
+    response = client.models.generate_content(
+        model="gemini-2.0-flash-001",
+        contents=messages,
+        config=types.GenerateContentConfig(
+            tools=[available_functions], system_instruction=system_prompt
+        ),
+    )
+    if verbose:
+        print("Prompt tokens:", response.usage_metadata.prompt_token_count)
+        print("Response tokens:", response.usage_metadata.candidates_token_count)
+
+    if response.candidates:
+        for candidate in response.candidates:
+            function_call_content = candidate.content
+            messages.append(function_call_content)
+
+    if not response.function_calls:
+        return response.text
+
+    function_responses = []
+    for function_call_part in response.function_calls:
+        function_call_result = call_function(function_call_part, verbose)
+        if (
+            not function_call_result.parts
+            or not function_call_result.parts[0].function_response
+        ):
+            raise Exception("empty function call result")
         if verbose:
-            print(f"-> {function_result.parts[0].function_response.response}")    
-    else:
-        raise ValueError("Function call did not return a valid response.")
-    
+            print(f"-> {function_call_result.parts[0].function_response.response}")
+        function_responses.append(function_call_result.parts[0])
+
+    if not function_responses:
+        raise Exception("no function responses generated, exiting.")
+
+    messages.append(types.Content(role="user", parts=function_responses)) 
+
+
+
+
 main()
+
